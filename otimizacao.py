@@ -30,11 +30,12 @@ def otimizacao(n, T_comb, M_ex_comb, M0, h, erro):
     err = 1
 
     # Chute inicial do ângulo da primeira rampa
-    theta_init = 5*np.pi/180
+    theta_init = 10*np.pi/180
 
     # Ajuste do ângulo da rampa para cada iteração
     ajuste = 1*np.pi/180
 
+    # Loop para resolver as equações
     while abs(err)>erro:
         # Pressão atmosférica [Pa]
         P[0] = atmos.P
@@ -49,10 +50,12 @@ def otimizacao(n, T_comb, M_ex_comb, M0, h, erro):
 
         # Resolvendo as equações analíticas para as râmpas de ondas oblíquas
         for i in range(n+1):
-            # Variável para resolver o beta a i-ésima rampa
+
+            # Variável para resolver o beta a i-ésima rampa e uma temporal para calcular os thetas
             beta = Symbol('beta')
             theta_temp = Symbol('theta_temp')
-            # O último estágio é deixado para a onda de choque refletido
+
+            # O último estágio é deixado para a onda de choque refletido (somatório dos thetas)
             if i == n:
                 # Equação para o beta
                 eqn = tan(sum(theta)) - ((2/tan(beta))*(M[i]**2*sin(beta)**2 - 1)/(M[i]**2*(k + cos(2*beta))+2))
@@ -74,6 +77,7 @@ def otimizacao(n, T_comb, M_ex_comb, M0, h, erro):
 
                 break
 
+            # Resolvendo para a primeira rampa com base no chute inicial do theta e suas atualizações
             if i == 0:
                 # Equação para o beta
                 eqn = tan(theta[i]) - ((2/tan(beta))*(M[i]**2*sin(beta)**2 - 1)/(M[i]**2*(k + cos(2*beta))+2))
@@ -92,6 +96,7 @@ def otimizacao(n, T_comb, M_ex_comb, M0, h, erro):
                 # Temperatura após a onda de choque
                 T[i+1] = T[i]*P[i+1]*rho[i]/(P[i]*rho[i+1])
 
+            # Resolvendo com base no cálculo da primeira rampa, as propriedades e calculando os demais thetas
             else:
                 beta_i[i] = asin(M[i-1]*sin(beta_i[i-1])/M[i])
 
@@ -113,13 +118,13 @@ def otimizacao(n, T_comb, M_ex_comb, M0, h, erro):
                 T[i+1] = T[i]*P[i+1]*rho[i]/(P[i]*rho[i+1])
 
         # Análise do erro
-        err = (T[i+1] - T_comb)/T_comb
-
+        err = (T[-1] - T_comb)/T_comb
+        print('err', err)
         if err>0:
-            theta_init = theta_init + ajuste/2
+            theta_init = theta_init - ajuste/2
 
         if err<0:
-            theta_init = theta_init - ajuste/2
+            theta_init = theta_init + ajuste/2
 
         print(theta_init*180/np.pi)
         print(theta*180/np.pi)
