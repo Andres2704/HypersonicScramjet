@@ -35,7 +35,7 @@ def otimizacao(n, T_comb, M_ex_comb, M0, h, erro):
     # Ajuste do ângulo da rampa para cada iteração
     ajuste = 1*np.pi/180
 
-    while True:
+    while abs(err)>erro:
         # Pressão atmosférica [Pa]
         P[0] = atmos.P
         # Temperatura local
@@ -114,9 +114,6 @@ def otimizacao(n, T_comb, M_ex_comb, M0, h, erro):
 
         # Análise do erro
         err = (T[i+1] - T_comb)/T_comb
-
-        if abs(err)<erro:
-            break
 
         if err>0:
             theta_init = theta_init + ajuste/2
