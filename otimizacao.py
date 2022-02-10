@@ -5,13 +5,12 @@ from sympy import Symbol
 from functions import *
 from sympy import cos, sin, tan, asin
 
-def otimizacao(n, T_comb, M_ex_comb, M0, h, erro):
+def otimizacao(n, T_comb, M0, h, erro, incremento, theta_init):
     '''
     Código para otimizar os dados da rampa com base na temperatura desejada na câmara de combustão
     com uma tolerância aceitável.
     n           -> Número de Rampas
     T_comb      -> Temperatura na câmara de combustão
-    M_ex_comb   -> Número de mach de saída da câmara de combustão (deve ser maior que 1.1)
     M0          -> Número de mach do escoamento livre
     h           -> Altitude de voo em km
     '''
@@ -22,6 +21,7 @@ def otimizacao(n, T_comb, M_ex_comb, M0, h, erro):
     M = np.zeros(n+2)
     beta_i = np.zeros(n+1)
     theta = np.zeros(n)
+    corr = np.zeros(2)
 
     # Propriedades atmosféricas em determinada altitude seguindo o padrão 1976
     atmos = atm.ATMOSPHERE_1976(h*1000)
@@ -30,11 +30,10 @@ def otimizacao(n, T_comb, M_ex_comb, M0, h, erro):
     err = 1
 
     # Chute inicial do ângulo da primeira rampa
-    theta_init = 10*np.pi/180
+    theta_init = theta_init
+    inc = incremento
 
-    # Ajuste do ângulo da rampa para cada iteração
-    ajuste = 1*np.pi/180
-
+    print('Otimizando veículo Scramjet para atingir a temperatura na câmara de combustão...')
     # Loop para resolver as equações
     while abs(err)>erro:
         # Pressão atmosférica [Pa]
@@ -59,7 +58,6 @@ def otimizacao(n, T_comb, M_ex_comb, M0, h, erro):
             if i == n:
                 # Equação para o beta
                 eqn = tan(sum(theta)) - ((2/tan(beta))*(M[i]**2*sin(beta)**2 - 1)/(M[i]**2*(k + cos(2*beta))+2))
-                print('sum_theta: ', sum(theta))
                 beta_i[i] = nsolve(eqn, sum(theta))
 
                 # Mach após a onda de choque oblíqua
@@ -119,17 +117,68 @@ def otimizacao(n, T_comb, M_ex_comb, M0, h, erro):
 
         # Análise do erro
         err = (T[-1] - T_comb)/T_comb
-        print('err', err)
-        if err>0:
-            theta_init = theta_init - ajuste/2
+
+        if corr[0] == 0 and corr[1] == 0:
+            corr[0] = err
+            corr[1] = err
 
         if err<0:
-            theta_init = theta_init + ajuste/2
+            corr[0] = err
+            err = 1
+            if corr[0]*corr[1]<0:
+                inc = np.sqrt(inc**2)/2
+            theta_init = theta_init + inc
 
-        print(theta_init*180/np.pi)
-        print(theta*180/np.pi)
+        elif err>erro:
+            corr[1] = err
+            if corr[0]*corr[1]<0:
+                inc = inc/2
+            theta_init = theta_init - inc
 
-    return np.array([theta, beta, P, T, rho, M])
+    theta = np.append(theta, sum(theta))
+    return theta, beta_i, P, T, rho, M
+
+def heat_add(P, T, rho, M, M_exit):
+    '''
+    Código para calcular as condições de operação após a adição de calor
+    P       -> Pressão na entrada da câmara de combustão
+    T       -> Temperatura na entrada da câmara de combustão
+    rho     -> Massa específica na entrada da câmara de combustão
+    M       -> Mach na entrada da câmara de combustão
+    '''
+    if M_exit < 1.1:
+        M_exit = 1.1
+
+    kr = korkegi(M)
+
+    P_exit =P* ((1+k*M**2)/(1+k*M_exit**2)) # P_exit/P
+
+    if P_exit/P>kr:
+        P_exit = kr*P
+        M_exit = np.sqrt((P/P_exit * (1+k*M**2) - 1)/k)
+
+    rho_exit = rho*((1+k*M_exit**2)/(1+k*M**2))*(M_exit/M)**2
+    T_exit = T*((1+k*M**2)/(1+k*M_exit**2))*(M/M_exit)**2
+
+    T_total_exit = T_exit*(1 + 0.5*(k-1)*M_exit**2)
+    T_total_inlet = T*(1 + 0.5*(k-1)*M**2)
+
+    q = cp*(T_total_exit - T_total_inlet)
+    return P_exit, T_exit, rho_exit, M_exit, T_total_exit, T_total_inlet, q
+
+def korkegi(M):
+    if M<= 4.5:
+        return 1 + 0.3*M**2
+    else:
+        return 0.17*M**2.5
+
+def print_results(theta, beta, P, T, rho, M):
+    print('theta: ', theta*180/np.pi, '[DEG]')
+    print('beta: ', beta*180/np.pi, '[DEG]')
+    print('P: ', P, '[Pa]')
+    print('T: ', T, '[K]')
+    print('rho: ', rho, '[kg/m3]')
+    print('Ma: ', M)
 
 if __name__ == '__main__':
     # Inputs - Essas entradas com subíndice 0 indicam as propriedades de entrada
@@ -137,7 +186,7 @@ if __name__ == '__main__':
     # Constantes do hidrogênio e o ar
     h_pr = 119.954E6 # poder calorífico j/kg
     f_st = 0.0291 # Fuel/air estequiométrico
-    cp = 1012 # Calor específico a pressão cte do ar [j/kgK]
+    cp = 1006.15 # Calor específico a pressão cte do ar [j/kgK]
     k = 1.4 # Razão de calores específicos
 
     # Número de rampas
@@ -150,7 +199,7 @@ if __name__ == '__main__':
     M0 = 9
 
     # Número de mach na saída da câmara de combustão
-    M_ex_comb = 1.5
+    M_ex_comb = 1.2
 
     # Altitude de operação do veículo [km]
     h = 35
@@ -158,4 +207,32 @@ if __name__ == '__main__':
     # Erro desejado entre a temperatura na câmara ótima e a calculada
     erro = 1E-4
 
-    scramjet = otimizacao(n, T_comb, M_ex_comb, M0, h, erro)
+    # Incremento para a correção do theta
+    incremento = 3*np.pi/180
+
+    # Chute inicial do ângulo da primeira rampa
+    theta_init = 5*np.pi/180
+
+    # Resultado obtido do CFD
+    m_dot = 3.967776
+
+    theta, beta, P, T, rho, M = otimizacao(n, T_comb, M0, h, erro, incremento, theta_init)
+    P_exit, T_exit, rho_exit, M_exit, T_total_exit, T_total_inlet, q = heat_add(P[-1], T[-1], rho[-1], M[-1], M_ex_comb)
+
+    q_dot = q*m_dot
+
+    print_results(theta, beta, P, T, rho, M)
+
+    print('q: ', q/1000, '[kJ/kg]')
+    print('q_dot: ', q_dot/1000, '[W]')
+    print('q_dot_vol:', q_dot/1.2e-8, '[W/m^3]')
+    print('Tt_exit: ',T_total_exit)
+    print('Tt_inlet: ',T_total_inlet)
+
+    q_dot_vol = 640000000000
+    q_dot = 640000000000*1.2e-8
+    q = q_dot/m_dot
+    T_total_exit = q/cp + T_total_inlet
+    print('------------------------------')
+    print('T_total necessária: ', T_total_exit)
+    print('q: ', q)
