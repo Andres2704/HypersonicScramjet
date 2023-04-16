@@ -5,16 +5,25 @@ from sympy import Symbol
 from functions import *
 from sympy import cos, sin, tan, asin
 
-def otimizacao(n, T_comb, M0, h, erro, incremento, theta_init):
+def optimize(n, T_comb, M0, h, erro, incremento, theta_init):
     '''
-    Código para otimizar os dados da rampa com base na temperatura desejada na câmara de combustão
-    com uma tolerância aceitável.
-    n           -> Número de Rampas
-    T_comb      -> Temperatura na câmara de combustão
-    M0          -> Número de mach do escoamento livre
-    h           -> Altitude de voo em km
+    Code constructed for optimizate the ramps in a Scramjet based on a desired combustion chamber temperature.
+
+    ==> Inputs:
+    n           -> Number of Ramps
+    T_comb      -> Combustion chamber Temperature
+    M0          -> Mach number of free stream flow
+    h           -> Flight altitude
+
+    ==> Outputs
+    theta       -> Deflection angle of each ramp
+    beta_i      -> Wave deflection of each ramp
+    P           -> Pressure at each ramp stage
+    T           -> Temperature at each ramp stage
+    rho         -> Density at each ramp stage
+    M           -> Mach number at each ramp stage
     '''
-    # Inicializando as variáveis de interesse (pressão, temperatura e densidade)
+    # Variables initialization (Pressure, Temperature, Density, etc)
     P = np.zeros(n+2)
     T = np.zeros(n+2)
     rho = np.zeros(n+2)
@@ -23,99 +32,98 @@ def otimizacao(n, T_comb, M0, h, erro, incremento, theta_init):
     theta = np.zeros(n)
     corr = np.zeros(2)
 
-    # Propriedades atmosféricas em determinada altitude seguindo o padrão 1976
+    # Atmospheric properties based on 1976 model
     atmos = atm.ATMOSPHERE_1976(h*1000)
 
-    # Erro calculado
+    # Error
     err = 1
 
-    # Chute inicial do ângulo da primeira rampa
+    # Initial guess of first ramp angle and its increment
     theta_init = theta_init
     inc = incremento
 
-    print('Otimizando veículo Scramjet para atingir a temperatura na câmara de combustão...')
-    # Loop para resolver as equações
+    print('Beging the optmization process...')
     while abs(err)>erro:
-        # Pressão atmosférica [Pa]
+        # Atmospheric pressure [Pa]
         P[0] = atmos.P
-        # Temperatura local
+        # Local temperature
         T[0] = atmos.T
-        # Densidade local
+        # Local density
         rho[0] = atmos.rho
-        # Mach do escoamento livre
+        # Free stream mach
         M[0] = M0
-        # Ângulo da primeira rampa - chute preliminar
+        # First ramp angle (guess)
         theta[0] = theta_init
 
-        # Resolvendo as equações analíticas para as râmpas de ondas oblíquas
+        # Solving the analytical equations
         for i in range(n+1):
 
-            # Variável para resolver o beta a i-ésima rampa e uma temporal para calcular os thetas
+            # Symbolic variables
             beta = Symbol('beta')
             theta_temp = Symbol('theta_temp')
 
-            # O último estágio é deixado para a onda de choque refletido (somatório dos thetas)
+            # Last stage is for reflected show wave (sum of each theta angle)
             if i == n:
-                # Equação para o beta
+                # Beta equation
                 eqn = tan(sum(theta)) - ((2/tan(beta))*(M[i]**2*sin(beta)**2 - 1)/(M[i]**2*(k + cos(2*beta))+2))
                 beta_i[i] = nsolve(eqn, sum(theta))
 
-                # Mach após a onda de choque oblíqua
+                # Mach number after shock wave
                 arg = float((1 + (k-1)/2*(M[i]*sin(beta_i[i]))**2)/(k*(M[i]*sin(beta_i[i]))**2 - (k-1)/2))
                 M[i+1] = np.sqrt(arg)*(1/sin(beta_i[i] - sum(theta)))
 
-                # Pressão após a onda de choque
+                # Pressure after shock wave
                 P[i+1] = P[i]*(1 + (2*k/(k+1))*((M[i]*sin(beta_i[i]))**2-1))
 
-                # Densidade após a onda de choque
+                # Density after shock wave
                 rho[i+1] = rho[i]*(M[i]*sin(beta_i[i]))**2*(k+1)/(2+(k-1)*(M[i]*sin(beta_i[i]))**2)
 
-                # Temperatura após a onda de choque
+                # Temperature after shock wave
                 T[i+1] = T[i]*P[i+1]*rho[i]/(P[i]*rho[i+1])
 
                 break
 
-            # Resolvendo para a primeira rampa com base no chute inicial do theta e suas atualizações
+            # Solving for the first ramp based on theta's initial guess and its updates
             if i == 0:
-                # Equação para o beta
+                # Beta equation
                 eqn = tan(theta[i]) - ((2/tan(beta))*(M[i]**2*sin(beta)**2 - 1)/(M[i]**2*(k + cos(2*beta))+2))
                 beta_i[i] = nsolve(eqn, theta[i])
 
-                # Mach após a onda de choque oblíqua
+                # Mach number after shock wave
                 arg = float((1 + (k-1)/2*(M[i]*sin(beta_i[i]))**2)/(k*(M[i]*sin(beta_i[i]))**2 - (k-1)/2))
                 M[i+1] = np.sqrt(arg)*(1/sin(beta_i[i] - theta[i]))
 
-                # Pressão após a onda de choque
+                # Pressure after shock wave
                 P[i+1] = P[i]*(1 + (2*k/(k+1))*((M[i]*sin(beta_i[i]))**2-1))
 
-                # Densidade após a onda de choque
+                # Density after shock wave
                 rho[i+1] = rho[i]*(M[i]*sin(beta_i[i]))**2*(k+1)/(2+(k-1)*(M[i]*sin(beta_i[i]))**2)
 
-                # Temperatura após a onda de choque
+                # Temperature after shock wave
                 T[i+1] = T[i]*P[i+1]*rho[i]/(P[i]*rho[i+1])
 
-            # Resolvendo com base no cálculo da primeira rampa, as propriedades e calculando os demais thetas
+            # Solving from the calculation of the first ramp, the properties and calculating the other thetas
             else:
                 beta_i[i] = asin(M[i-1]*sin(beta_i[i-1])/M[i])
 
-                # Equação para o theta
+                # Theta equation
                 eqn = tan(theta_temp) - ((2/tan(beta_i[i]))*(M[i]**2*sin(beta_i[i])**2 - 1)/(M[i]**2*(k + cos(2*beta_i[i]))+2))
                 theta[i] = nsolve(eqn, beta_i[i])
 
-                # Mach após a onda de choque oblíqua
+                # Mach number after oblique shock wave
                 arg = float((1 + (k-1)/2*(M[i]*sin(beta_i[i]))**2)/(k*(M[i]*sin(beta_i[i]))**2 - (k-1)/2))
                 M[i+1] = np.sqrt(arg)*(1/sin(beta_i[i] - theta[i]))
 
-                # Pressão após a onda de choque
+                # Pressure after shock wave
                 P[i+1] = P[i]*(1 + (2*k/(k+1))*((M[i]*sin(beta_i[i]))**2-1))
 
-                # Densidade após a onda de choque
+                # Density after shock wave
                 rho[i+1] = rho[i]*(M[i]*sin(beta_i[i]))**2*(k+1)/(2+(k-1)*(M[i]*sin(beta_i[i]))**2)
 
-                # Temperatura após a onda de choque
+                # Temperature after shock wave
                 T[i+1] = T[i]*P[i+1]*rho[i]/(P[i]*rho[i+1])
 
-        # Análise do erro
+        # Error analysis
         err = (T[-1] - T_comb)/T_comb
 
         if corr[0] == 0 and corr[1] == 0:
@@ -140,11 +148,11 @@ def otimizacao(n, T_comb, M0, h, erro, incremento, theta_init):
 
 def heat_add(P, T, rho, M, M_exit):
     '''
-    Código para calcular as condições de operação após a adição de calor
-    P       -> Pressão na entrada da câmara de combustão
-    T       -> Temperatura na entrada da câmara de combustão
-    rho     -> Massa específica na entrada da câmara de combustão
-    M       -> Mach na entrada da câmara de combustão
+    Code to calculate the operating conditions after heat addition
+    P       -> Pressure at the combustion chamber inlet
+    T       -> Temperature at the combustion chamber inlet
+    rho     -> Specific mass at combustion chamber inlet
+    M       -> Mach at the combustion chamber inlet
     '''
     if M_exit < 1.1:
         M_exit = 1.1
@@ -152,21 +160,30 @@ def heat_add(P, T, rho, M, M_exit):
     kr = korkegi(M)
 
     P_exit =P* ((1+k*M**2)/(1+k*M_exit**2)) # P_exit/P
-
+    T_total_inlet = T + 0.5*k*T*R/cp
     if P_exit/P>kr:
         P_exit = kr*P
         M_exit = np.sqrt((P/P_exit * (1+k*M**2) - 1)/k)
 
-    rho_exit = rho*((1+k*M_exit**2)/(1+k*M**2))*(M_exit/M)**2
-    T_exit = T*((1+k*M**2)/(1+k*M_exit**2))*(M/M_exit)**2
+    rho_exit = rho*((1+k*M_exit**2)/(1+k*M**2))*(M/M_exit)**2
+    T_exit = T*((1+k*M**2)/(1+k*M_exit**2))**2*(M_exit/M)**2
 
-    T_total_exit = T_exit*(1 + 0.5*(k-1)*M_exit**2)
-    T_total_inlet = T*(1 + 0.5*(k-1)*M**2)
+    T_total_exit = T_total_inlet*(((1+k*M**2)/(1+k*M_exit**2))**2*(M_exit/M)**2)*((1+0.5*(k-1)*M_exit**2)/(1+0.5*(k-1)*M**2))
 
     q = cp*(T_total_exit - T_total_inlet)
     return P_exit, T_exit, rho_exit, M_exit, T_total_exit, T_total_inlet, q
 
 def korkegi(M):
+    """
+    Korkegi limit
+
+    ==> Inputs:
+    M0          -> Mach number
+
+    ==> Inputs:
+    Critical pressure ratio
+    """
+
     if M<= 4.5:
         return 1 + 0.3*M**2
     else:
@@ -181,58 +198,70 @@ def print_results(theta, beta, P, T, rho, M):
     print('Ma: ', M)
 
 if __name__ == '__main__':
-    # Inputs - Essas entradas com subíndice 0 indicam as propriedades de entrada
-    # E de escoamento livre, bem com as informações da primeria rampa do motor
-    # Constantes do hidrogênio e o ar
-    h_pr = 119.954E6 # poder calorífico j/kg
-    f_st = 0.0291 # Fuel/air estequiométrico
-    cp = 1006.15 # Calor específico a pressão cte do ar [j/kgK]
-    k = 1.4 # Razão de calores específicos
+    # Inputs - These inputs with subindex 0 indicate the input properties
+    # And free-flow, as well as the first engine ramp information
+    # Hydrogen and air constants
+    h_pr = 119.954E6                # Heat of combustion j/kg
+    f_st = 0.0291                   # Fuel/air ratio stoichiometric
+    cp = 1006.15                    # Specific Heat for air [j/kgK]
+    k = 1.4                         # Specific heat ratio of air
+    R = 8.3144621                   # Gas constant
 
-    # Número de rampas
+    # Number of ramps
     n = 2
 
-    # Temperatuta na câmara de combustão em K
+    # Desired Temperature at Combustion Chamber [K]
     T_comb = 1000
 
-    # Mach do veículo
+    # Mach of vehicle
     M0 = 9
 
-    # Número de mach na saída da câmara de combustão
+    # Desired Mach number at the entrance of the nozzle
     M_ex_comb = 1.2
 
-    # Altitude de operação do veículo [km]
+    # Operating altitude of the vehicle [km]
     h = 35
 
-    # Erro desejado entre a temperatura na câmara ótima e a calculada
-    erro = 1E-4
+    # Desired error
+    erro = 1E-5
 
-    # Incremento para a correção do theta
-    incremento = 3*np.pi/180
+    # Increment of each ramp at each iteration
+    incremento = 1.2*np.pi/180
 
-    # Chute inicial do ângulo da primeira rampa
+    # Initial guess for the first ramp
     theta_init = 5*np.pi/180
 
-    # Resultado obtido do CFD
-    m_dot = 3.967776
-
-    theta, beta, P, T, rho, M = otimizacao(n, T_comb, M0, h, erro, incremento, theta_init)
-    P_exit, T_exit, rho_exit, M_exit, T_total_exit, T_total_inlet, q = heat_add(P[-1], T[-1], rho[-1], M[-1], M_ex_comb)
-
-    q_dot = q*m_dot
-
+    # Optimizing ramps angles based on previous inputs
+    theta, beta, P, T, rho, M = optimize(n, T_comb, M0, h, erro, incremento, theta_init)
     print_results(theta, beta, P, T, rho, M)
 
-    print('q: ', q/1000, '[kJ/kg]')
-    print('q_dot: ', q_dot/1000, '[W]')
-    print('q_dot_vol:', q_dot/1.2e-8, '[W/m^3]')
-    print('Tt_exit: ',T_total_exit)
-    print('Tt_inlet: ',T_total_inlet)
 
-    q_dot_vol = 640000000000
-    q_dot = 640000000000*1.2e-8
-    q = q_dot/m_dot
-    T_total_exit = q/cp + T_total_inlet
-    print('------------------------------')
-    print('T_total necessária: ', T_total_exit)
-    print('q: ', q)
+
+    # # Heat addition =================================================================
+    #
+    # # Resultado obtido do CFD
+    # m_dot = 3.967776
+    #
+    # P_exit, T_exit, rho_exit, M_exit, T_total_exit, T_total_inlet, q = heat_add(P[-1], T[-1], rho[-1], M[-1], M_ex_comb)
+    # q_dot = q*m_dot
+    # volume = (12/1000)*(1/1000)*1;
+    # print("====== Properties after heat add =======")
+    # print('Mach exit: ', M_exit)
+    # print('P exit: ', P_exit)
+    # print('T exit: ', T_exit)
+    # print('rho exit: ', rho_exit)
+    #
+    # print("====== Heat addition ==========")
+    # print('q: ', q/1000, '[kJ/kg]')
+    # print('q_dot: ', q_dot/1000, '[kW]')
+    # print('q_dot_vol:', q_dot/volume, '[W/m^3]')
+    # print('Tt_exit: ',T_total_exit)
+    # print('Tt_inlet: ',T_total_inlet)
+    #
+    # q_dot_vol = 640000000000
+    # q_dot = 640000000000*volume
+    # q = q_dot/m_dot
+    # T_total_exit = q/cp + T_total_inlet
+    # print('------------------------------')
+    # print('T_total necessária: ', T_total_exit)
+    # print('q: ', q/1000)
