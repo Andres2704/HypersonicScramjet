@@ -1,8 +1,7 @@
 import fluids.atmosphere as atm
-import pandas as pd
+import numpy as np
 from sympy.solvers import nsolve
 from sympy import Symbol
-from functions import *
 from sympy import cos, sin, tan, asin
 
 def optimize(n, T_comb, M0, h, erro, incremento, theta_init):
